@@ -1,0 +1,282 @@
+"""FINAL_OF_THE_FINAL.ipynb
+
+### **IMPORTING REQUIRED LIBRARIES**###
+"""
+
+# Commented out IPython magic to ensure Python compatibility.
+import pandas as pd
+import numpy as np
+import re
+import nltk
+from nltk.corpus import stopwords
+import matplotlib.pyplot as plt
+# %matplotlib inline
+import keras
+import tensorflow as tf
+from tensorflow import keras
+from keras.layers import Conv1D, MaxPooling1D, Embedding
+
+from numpy import array
+from keras.preprocessing.text import one_hot
+from keras.preprocessing.sequence import pad_sequences
+from keras.models import Sequential
+from keras.layers.core import Activation, Dropout, Dense
+from keras.layers import Flatten
+from keras.layers import GlobalMaxPooling1D
+from keras.layers.embeddings import Embedding
+from sklearn.model_selection import train_test_split
+from keras.preprocessing.text import Tokenizer
+
+"""###**IMPORTING AND ANALYSING THE DATASET**###"""
+
+url = 'https://raw.githubusercontent.com/Giohanny/Twitter-Sentiment-Analysis/master/text_emotion.csv'
+df = pd.read_csv(url)
+
+df.drop(["author"], axis = 1, inplace = True)
+
+df = df[df.sentiment != 'neutral']
+df = df[df.sentiment != 'worry']
+df = df[df.sentiment != 'boredom']
+df = df[df.sentiment!= 'anger']
+df = df[df.sentiment != 'hate']
+df = df[df.sentiment!= 'empty']
+df = df[df.sentiment != 'enthusiasm']
+
+df.shape
+
+df.head()
+
+df.dtypes
+
+df['sentiment'].value_counts().plot(kind='bar')
+
+df.isnull().values.any()
+
+import seaborn as sns
+plt.figure(figsize=(15,5))
+sns.countplot(x='sentiment', data=df)
+
+"""###**DATA PREPROCESSING**###"""
+
+def preprocess_text(sen):
+
+    sentence = remove_tags(sen)
+
+
+    sentence = re.sub('[^a-zA-Z]', ' ', sentence)
+
+
+    sentence = re.sub(r"\s+[a-zA-Z]\s+", ' ', sentence)
+
+
+    sentence = re.sub(r'\s+', ' ', sentence)
+
+   
+    sentence = sentence.lower() 
+
+    
+
+    return sentence
+
+TAG_RE = re.compile(r'<[^>]+>')
+
+def remove_tags(content):
+    return TAG_RE.sub('', content)
+
+X = []
+sentence = list(df['content'])
+for sen in sentence:
+    X.append(preprocess_text(sen))
+
+"""###**CREATING DUMMIES**###"""
+
+Y = pd.get_dummies(df['sentiment'])
+Y.head()
+
+"""###**SPLITTING THE DATASET IN TRAIN AND TEST USIING SKLEARN**###"""
+
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20, random_state=42)
+
+"""###**TOKENIZING THE DATA**###"""
+
+# tokenizing data
+tokenizer = Tokenizer(num_words=5000)
+tokenizer.fit_on_texts(X_train)
+
+X_train = tokenizer.texts_to_sequences(X_train)
+X_test = tokenizer.texts_to_sequences(X_test)
+
+"""###**LEMMATIZING THE DATA**###"""
+
+lemma_word = []
+import nltk
+nltk.download('wordnet')
+from nltk.stem import WordNetLemmatizer
+wordnet_lemmatizer = WordNetLemmatizer()
+for w in sentence:
+    word1 = wordnet_lemmatizer.lemmatize(w, pos = "n")
+    word2 = wordnet_lemmatizer.lemmatize(word1, pos = "v")
+    word3 = wordnet_lemmatizer.lemmatize(word2, pos = ("a"))
+    lemma_word.append(word3)
+print(lemma_word)
+
+from keras.preprocessing.text import one_hot
+from keras.preprocessing.text import text_to_word_sequence
+
+"""###**REMOVING STOPWORDS**###"""
+
+def filter_stop_words(lemma_word, stop_words):
+    for i, sentence in enumerate(lemma_word):
+        new_sent = [word for word in sentence.split() if word not in stop_words]
+        lemma_word[i] = ' '.join(new_sent)
+    return lemma_word
+
+stop_words = [ "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "could", "did", "do", "does", "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers", "herself", "him", "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "it", "it's", "its", "itself", "let's", "me", "more", "most", "my", "myself", "nor", "of", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "she", "she'd", "she'll", "she's", "should", "so", "some", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "we'd", "we'll", "we're", "we've", "were", "what", "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's", "whom", "why", "why's", "with", "would", "you", "you'd", "you'll", "you're", "you've", "your", "yours", "yourself", "yourselves" ]
+sentence = filter_stop_words(X, stop_words)
+print(sentence)
+
+
+
+"""###**PADDING THE DATA**###"""
+
+# padding the data
+vocab_size = len(tokenizer.word_index) + 1
+
+maxlen = 100
+
+X_train = pad_sequences(X_train, padding='post', maxlen=maxlen)
+X_test = pad_sequences(X_test, padding='post', maxlen=maxlen)
+
+"""###**PREPARING THE EMBEDDING LAYER**###"""
+
+from numpy import array
+from numpy import asarray
+from numpy import zeros
+import io
+from google.colab import drive
+drive.mount("/content/drive")
+
+glove_file = io.open('/content/drive/My Drive/glove.6B.100d.txt')
+embeddings_dictionary = dict()
+
+for line in glove_file:
+    records = line.split()
+    word = records[0]
+    vector_dimensions = asarray(records[1:], dtype='float32')
+    embeddings_dictionary [word] = vector_dimensions
+glove_file.close()
+
+embedding_matrix = zeros((vocab_size,100))
+for word, index in tokenizer.word_index.items():
+    embedding_vector = embeddings_dictionary.get(word)
+    if embedding_vector is not None:
+        embedding_matrix[index] = embedding_vector
+
+"""###**TEXT CLASSIFICATION USING CONVOLUTIONAL NEURAL NETWORK(CNN)**###"""
+
+import numpy
+from keras.models import Sequential
+from keras.layers.convolutional import Conv1D
+model = Sequential()
+
+
+embedding_layer = Embedding(vocab_size, 100, weights=[embedding_matrix], input_length=maxlen , trainable=False)
+model.add(embedding_layer)
+
+model.add(Conv1D(128, 5, activation='relu'))
+model.add(GlobalMaxPooling1D())
+model.add(Dense(6, activation='sigmoid'))
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
+
+print(model.summary())
+
+"""###**TRAINING THE MODEL**###"""
+
+history = model.fit(X_train, Y_train, batch_size=128, epochs=6, verbose=1, validation_split=0.2)
+
+
+score = model.evaluate(X_test, Y_test, verbose=1)
+
+print("Test Score:", score[0])
+print("Test Accuracy:", score[1])
+
+"""###**PLOTTING THE LOSS AND ACCURACY DIFFERENCES FOR TRAIN AND TEST DATASETS**###"""
+
+import matplotlib.pyplot as plt
+
+plt.plot(history.history['acc'])
+plt.plot(history.history['val_acc'])
+
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train','test'], loc = 'upper left')
+plt.show()
+
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+
+plt.title('model loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train','test'], loc = 'upper left')
+plt.show()
+
+cmm=[]
+tweet=input("enter your comment:")
+cmm_1=[]
+cmm_1.append(tweet)
+cmm.append(cmm_1)
+#Tokenizing
+for cmm1 in cmm:
+    cmm2=cmm1
+    list=[]
+    list=cmm2[0].split(".")
+    if(len(list)>1):
+      print("paragraph spliting")
+      for cmm4 in list:
+        print(cmm4)
+        cmm3=[]
+        cmm3.append(cmm4)
+        cmm3 = tokenizer.texts_to_sequences(cmm3)
+        print(cmm3)
+        #Padding
+        cmm3 = pad_sequences(cmm3, maxlen=36, dtype='int32', value=0)
+        sentiment = model.predict(cmm3,batch_size=1,verbose = 1)[0]
+        print(sentiment)
+        print(np.argmax(sentiment))
+        if(np.argmax(sentiment) ==0 ):
+            print("sadness")
+        elif (np.argmax(sentiment) ==1 ):
+            print("surprise")
+        elif (np.argmax(sentiment) ==2):
+            print("love")
+        elif (np.argmax(sentiment) == 3):
+            print("fun")
+        elif (np.argmax(sentiment) == 4):
+            print("happy")
+        elif (np.argmax(sentiment) == 5):
+            print("relief")
+    print("over all emotion")
+    print(cmm1)
+    cmm1 = tokenizer.texts_to_sequences(cmm1)
+    print(cmm1)
+        #Padding 
+    cmm1 = pad_sequences(cmm1, maxlen=36, dtype='int32', value=0)
+    sentiment = model.predict(cmm1,batch_size=1,verbose = 1)[0]
+    print(sentiment)
+    print(np.argmax(sentiment))
+    if(np.argmax(sentiment) ==0 ):
+        print("sadness")
+    elif (np.argmax(sentiment) ==1 ):
+        print("surprise")
+    elif (np.argmax(sentiment) ==2):
+        print("love")
+    elif (np.argmax(sentiment) == 3):
+        print("fun")
+    elif (np.argmax(sentiment) == 4):
+        print("happy")
+    elif (np.argmax(sentiment) == 5):
+       print("relief")
